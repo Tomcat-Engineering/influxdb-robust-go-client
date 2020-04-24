@@ -25,9 +25,11 @@ type client struct {
 
 type datastore struct {
 	db *bolt.DB
-	In chan   *PtWithMeta
-	Done chan *PtWithMeta
+	In chan   *PtWithMeta // incoming new datapoints
+	Done chan *PtWithMeta // signals that the point has been successfully uploaded
 	clients []*client
+	stopCh chan bool
+	doneCh chan bool  // nothing to do with uploads, just signals that our main loop has completed
 }
 
 func NewDatastore(filename string) (*datastore, error) {
@@ -40,9 +42,17 @@ func NewDatastore(filename string) (*datastore, error) {
 		db: db,
 		In: make(chan *PtWithMeta),
 		Done: make(chan *PtWithMeta),
+		stopCh: make(chan bool),
+		doneCh: make(chan bool),
 	}
 	go d.run()
 	return &d, nil
+}
+
+func (d *datastore) Close() {
+	d.stopCh <- true
+	<- d.doneCh
+	d.db.Close()
 }
 
 // Returns a channel which will squirt out datapoints which need uploading
@@ -76,6 +86,9 @@ func (d* datastore) run() {
 	var pt *PtWithMeta
 	for {
 		select {
+		case <- d.stopCh:
+			d.doneCh <- true
+			return
 		case pt =  <-d.In:
 			d.store(pt) // This sets the point's ID field
 			for _, c := range(d.clients) {

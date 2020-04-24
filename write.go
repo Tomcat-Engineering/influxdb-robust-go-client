@@ -37,7 +37,8 @@ type writer struct {
 	options influxdb2.Options
 	batchSize int
 	db *datastore
-	stopCh chan bool
+	stopCh chan bool // signals that we should shut down
+	doneCh chan bool // signals that we have shut down
 	writeBuffer []*PtWithMeta
 }
 
@@ -48,6 +49,7 @@ func NewWriter(client influxdb2.InfluxDBClient, db *datastore, org, bucket strin
 		options: *options,
 		db: db,
 		stopCh: make(chan bool),
+		doneCh: make(chan bool),
 		writeBuffer: make([]*PtWithMeta, 0, options.BatchSize()+1),
 	}
 	go w.run(client)
@@ -78,6 +80,7 @@ func (w *writer) Flush() {
 
 func (w *writer) Close() {
 	w.stopCh <- true
+	<- w.doneCh
 }
 
 func (w *writer) Errors() <-chan error {
@@ -106,6 +109,7 @@ func (w *writer) run(client influxdb2.InfluxDBClient) {
 		case <-w.stopCh:
 			ticker.Stop()
 			w.db.CloseNewDataChannel(inputCh)
+			w.doneCh <- true
 			return
 		}
 	}

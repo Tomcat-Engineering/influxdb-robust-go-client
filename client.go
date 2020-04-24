@@ -11,6 +11,7 @@ import (
 type InfluxDBRobustClient struct {
 	BaseClient influxdb2.InfluxDBClient
 	db *datastore
+	writeApis []influxdb2.WriteApi
 }
 
 
@@ -39,7 +40,11 @@ func (c *InfluxDBRobustClient) ServerUrl() string {
 }
 
 func (c *InfluxDBRobustClient) Close() {
+	for _, w := range c.writeApis {
+		w.Close()
+	}
 	c.BaseClient.Close()
+	c.db.Close()
 }
 
 func (c *InfluxDBRobustClient) Ready(ctx context.Context) (bool, error) {
@@ -52,5 +57,7 @@ func (c *InfluxDBRobustClient) QueryApi(org string) influxdb2.QueryApi {
 
 // Rather than influxdb2.writeApiImpl, we return our own implementation
 func (c *InfluxDBRobustClient) WriteApi(org, bucket string) influxdb2.WriteApi {
-	return NewWriter(c.BaseClient, c.db, org, bucket, c.BaseClient.Options())
+	w := NewWriter(c.BaseClient, c.db, org, bucket, c.BaseClient.Options())
+	c.writeApis = append(c.writeApis, w)
+	return w
 }
