@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"log"
 	"time"
 
@@ -40,11 +41,11 @@ type writer struct {
 	writeBuffer []*PtWithMeta
 }
 
-func NewWriter(client *InfluxDBClient, db *datastore, org, bucket string, options influxdb2.Options) {
+func NewWriter(client influxdb2.InfluxDBClient, db *datastore, org, bucket string, options *influxdb2.Options) *writer {
 	w := writer{
 		org: org, 
 		bucket: bucket, 
-		options: options,
+		options: *options,
 		db: db,
 		stopCh: make(chan bool),
 		writeBuffer: make([]*PtWithMeta, 0, options.BatchSize()+1),
@@ -54,7 +55,7 @@ func NewWriter(client *InfluxDBClient, db *datastore, org, bucket string, option
 }
 
 func (w *writer) WriteRecord(line string) {
-	db.In <- &PtWithMeta{Org: w.org, Bucket: w.bucket, Line: line}
+	w.db.In <- &PtWithMeta{Org: w.org, Bucket: w.bucket, Line: line}
 }
 
 func (w *writer) WritePoint(point *influxdb2.Point) {
@@ -72,29 +73,29 @@ func (w *writer) WritePoint(point *influxdb2.Point) {
 	w.WriteRecord(buffer.String())
 }
 
-func (w *writer) Flush {
+func (w *writer) Flush() {
 }
 
-func (w *writer) Close {
+func (w *writer) Close() {
 	w.stopCh <- true
 }
 
-func (w *writer) Errors {
+func (w *writer) Errors() <-chan error {
 	return nil
 }
 
 // Background process which gets any old data from the database and uploads it, then
 // listens for new data and uploads that.  It batches stuff, using code stolen from
 // the non-blocking influx2 client.
-func (w *writer) run(client *InfluxDBClient) {
+func (w *writer) run(client influxdb2.InfluxDBClient) {
 	baseWriter := client.WriteApiBlocking(w.org, w.bucket)
-	inputCh := w.db.GetNewDataChannel(org, bucket)
+	inputCh := w.db.GetNewDataChannel(w.org, w.bucket)
 	ticker := time.NewTicker(time.Duration(w.options.FlushInterval()) * time.Millisecond)
 
 	for {
 		select {
-		case pt <-inputCh:
-			writeBuffer = append(w.writeBuffer, pt)
+		case pt := <-inputCh:
+			w.writeBuffer = append(w.writeBuffer, pt)
 			if len(w.writeBuffer) >= int(w.options.BatchSize()) {
 				w.flushBuffer(baseWriter)
 			}
@@ -104,11 +105,14 @@ func (w *writer) run(client *InfluxDBClient) {
 
 		case <-w.stopCh:
 			ticker.Stop()
-			break
+			w.db.CloseNewDataChannel(inputCh)
+			return
+		}
 	}
+	
 }
 
-func (w *writer) flushBuffer(baseWriter influx2.WriteApiBlocking) {
+func (w *writer) flushBuffer(baseWriter influxdb2.WriteApiBlocking) {
 	if len(w.writeBuffer) > 0 {
 		var lines []string
 		for _, pt := range(w.writeBuffer) {
@@ -116,7 +120,7 @@ func (w *writer) flushBuffer(baseWriter influx2.WriteApiBlocking) {
 		}
 
 		// Attempt to upload the data
-		err := baseWriter.WriteRecord(lines...)
+		err := baseWriter.WriteRecord(nil, lines...)
 
 		if err != nil {
 			// TODO: wait
@@ -125,7 +129,7 @@ func (w *writer) flushBuffer(baseWriter influx2.WriteApiBlocking) {
 			// Mark stuff as done.  This is only called from run(), therefore
 			// nothing can have been added to writeBuffer since we created `lines`.
 			for _, pt := range(w.writeBuffer) {
-				db.DoneCh <- pt
+				w.db.Done <- pt
 			}
 			w.writeBuffer = w.writeBuffer[:0]
 		}

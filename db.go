@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/binary"
 	"fmt"
 	"log"
+	"time"
 
 	bolt "go.etcd.io/bbolt"
 )
@@ -21,7 +23,7 @@ type client struct {
 	FirstLivePoint *PtWithMeta // So that backfill knows when to stop.
 }
 
-type struct datastore {
+type datastore struct {
 	db *bolt.DB
 	In chan   *PtWithMeta
 	Done chan *PtWithMeta
@@ -45,8 +47,8 @@ func NewDatastore(filename string) (*datastore, error) {
 
 // Returns a channel which will squirt out datapoints which need uploading
 // for this org/bucket (including old ones).
-func (d *datastore) GetNewDataChannel(org, bucket) (chan *PtWithMeta) {
-	c := client{
+func (d *datastore) GetNewDataChannel(org, bucket string) (<-chan *PtWithMeta) {
+	c := &client{
 		Org: org,
 		Bucket: bucket,
 		NewDataChan: make(chan *PtWithMeta),
@@ -56,12 +58,25 @@ func (d *datastore) GetNewDataChannel(org, bucket) (chan *PtWithMeta) {
 	return c.NewDataChan
 }
 
+func (d *datastore) CloseNewDataChannel(ch <-chan *PtWithMeta) {
+	tmp := d.clients[:0]
+	for _, c := range(d.clients) {
+		if ch == c.NewDataChan {
+			close(c.NewDataChan)
+		} else {
+			tmp = append(tmp, c)
+		}
+	}
+	d.clients = tmp
+}
+
 // Run forever, moving data between the channels and the Bolt database.
 // Only stuff called from this function will update the database.
 func (d* datastore) run() {
+	var pt *PtWithMeta
 	for {
 		select {
-		case pt <- d.In:
+		case pt =  <-d.In:
 			d.store(pt) // This sets the point's ID field
 			for _, c := range(d.clients) {
 				if c.Org == pt.Org && c.Bucket == pt.Bucket {
@@ -71,14 +86,14 @@ func (d* datastore) run() {
 					}
 				}
 			}
-		case pt <- d.Done:
+		case pt = <-d.Done:
 			d.markDone(pt)
 		}
 	}
 }
 
 func (d* datastore) store(pt *PtWithMeta) {
-	id uint64
+	var id uint64
 	err := d.db.Update(func(tx *bolt.Tx) error {
 		b, err := tx.CreateBucketIfNotExists(topic(pt.Org, pt.Bucket))
 		if err != nil {
@@ -102,7 +117,7 @@ func (d* datastore) markDone(pt *PtWithMeta) {
 			// The bucket doesn't exist, oh well
 			return nil
 		}
-		return b.Delete(itob(Pt.Id))
+		return b.Delete(itob(pt.Id))
 	})
 	if err != nil {
 		log.Printf("DB error in markDone: %s", err)
@@ -121,14 +136,14 @@ func (d *datastore) backfill(c *client) {
 		// Iterate over all the points on this topic, copying them into the client's "new data" channel
 		cursor := b.Cursor()
 		for id, line := cursor.First(); id != nil; id, line = cursor.Next() {
-			if c.FirstLivePoint != nil && id >= c.FirstLivePoint.Id {
+			if c.FirstLivePoint != nil && btoi(id) >= c.FirstLivePoint.Id {
 				// We have caught up with the live data
 				break
 			}
 			c.NewDataChan <- &PtWithMeta{
 				Org: c.Org,
 				Bucket: c.Bucket,
-				Line: line,
+				Line: string(line),
 				Id: btoi(id),
 			}
 		}
