@@ -1,6 +1,6 @@
-// package influxdb2robust provides a variant of the standard influxdb2 go client
+// Package influxdb2robust provides a variant of the standard influxdb2 go client
 // library (https://github.com/influxdata/influxdb-client-go) which buffers new
-// data in a local BoltDB database so that we can safely collect data and upload it 
+// data in a local BoltDB database so that we can safely collect data and upload it
 // to a remote InfluxDB v2 instance despite a bad network connection.
 package influxdb2robust
 
@@ -12,6 +12,12 @@ import (
 	"github.com/influxdata/influxdb-client-go/domain"
 )
 
+// InfluxDBRobustClient implements the API to communicate with an InfluxDBServer
+// There two APIs for writing, WriteApi and WriteApiBlocking.
+// WriteApi provides asynchronous, non-blocking, methods for writing time series data,
+// and uses the robust Boltdb buffer.
+// WriteApiBlocking provides blocking methods for writing time series data and does not
+// use the buffer.
 type InfluxDBRobustClient struct {
 	BaseClient influxdb2.InfluxDBClient
 	db         *datastore
@@ -41,7 +47,6 @@ func NewClient(serverUrl string, authToken string, bufferFile string) (*InfluxDB
 }
 
 // Delegate most things to the normal client that we are wrapping
-
 
 // Options returns the options associated with client
 func (c *InfluxDBRobustClient) Options() *influxdb2.Options {
@@ -102,7 +107,7 @@ func (c *InfluxDBRobustClient) WriteApi(org, bucket string) influxdb2.WriteApi {
 	return w
 }
 
-// WriteApi returns the synchronous, blocking, Write client.
+// WriteApiBlocking returns the synchronous, blocking, Write client.
 // We allow direct access to the underlying blocking client - blocking writes will tell the caller
 // that the write failed, so we don't need the magic persistent buffer.
 func (c *InfluxDBRobustClient) WriteApiBlocking(org, bucket string) influxdb2.WriteApiBlocking {
