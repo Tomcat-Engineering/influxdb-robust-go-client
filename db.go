@@ -1,4 +1,4 @@
-package main
+package influxdb2robust
 
 import (
 	"encoding/binary"

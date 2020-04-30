@@ -1,4 +1,4 @@
-package main
+package influxdb2robust
 
 import (
 	"bytes"
@@ -37,6 +37,7 @@ type writer struct {
 	options     influxdb2.Options
 	batchSize   int
 	db          *datastore
+	flushCh     chan bool // signals that we should upload the current batch of points immediately
 	stopCh      chan bool // signals that we should shut down
 	doneCh      chan bool // signals that we have shut down
 	writeBuffer []*PtWithMeta
@@ -48,6 +49,7 @@ func NewWriter(client influxdb2.InfluxDBClient, db *datastore, org, bucket strin
 		bucket:      bucket,
 		options:     *options,
 		db:          db,
+		flushCh:     make(chan bool),
 		stopCh:      make(chan bool),
 		doneCh:      make(chan bool),
 		writeBuffer: make([]*PtWithMeta, 0, options.BatchSize()+1),
@@ -76,6 +78,7 @@ func (w *writer) WritePoint(point *influxdb2.Point) {
 }
 
 func (w *writer) Flush() {
+	w.flushCh <- true
 }
 
 func (w *writer) Close() {
@@ -106,6 +109,9 @@ func (w *writer) run(client influxdb2.InfluxDBClient) {
 		case <-ticker.C:
 			w.flushBuffer(baseWriter)
 
+		case <-w.flushCh:
+			w.flushBuffer(baseWriter)
+
 		case <-w.stopCh:
 			ticker.Stop()
 			w.db.CloseNewDataChannel(inputCh)
@@ -127,7 +133,10 @@ func (w *writer) flushBuffer(baseWriter influxdb2.WriteApiBlocking) {
 		err := baseWriter.WriteRecord(nil, lines...)
 
 		if err != nil {
-			// TODO: wait
+			// Wait for a bit.  This goroutine is only doing uploads, so if
+			// the server connection is broken we should just wait.
+			// Default Influxdb RetryInterval is 30 seconds
+			time.Sleep(time.Second * time.Duration(w.options.RetryInterval()))
 
 		} else {
 			// Mark stuff as done.  This is only called from run(), therefore

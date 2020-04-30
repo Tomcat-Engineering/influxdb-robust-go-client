@@ -1,5 +1,4 @@
-// package "influxdb2robust"
-package main
+package influxdb2robust
 
 import (
 	"context"
