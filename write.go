@@ -38,21 +38,24 @@ type writer struct {
 	options     influxdb2.Options
 	batchSize   int
 	db          *datastore
+	ctx         context.Context
+	cancel      context.CancelFunc
 	flushCh     chan bool // signals that we should upload the current batch of points immediately
-	stopCh      chan bool // signals that we should shut down
 	doneCh      chan bool // signals that we have shut down
 	errCh       chan error
 	writeBuffer []*ptWithMeta
 }
 
 func newWriter(client influxdb2.InfluxDBClient, db *datastore, org, bucket string, options *influxdb2.Options) *writer {
+	ctx, cancelFunc := context.WithCancel(context.Background())
 	w := writer{
 		org:         org,
 		bucket:      bucket,
 		options:     *options,
 		db:          db,
+		ctx:         ctx,
+		cancel:      cancelFunc,
 		flushCh:     make(chan bool),
-		stopCh:      make(chan bool),
 		doneCh:      make(chan bool),
 		writeBuffer: make([]*ptWithMeta, 0, options.BatchSize()+1),
 	}
@@ -84,9 +87,8 @@ func (w *writer) Flush() {
 }
 
 func (w *writer) Close() {
-	w.stopCh <- true
+	w.cancel()
 	<-w.doneCh
-
 	if w.errCh != nil {
 		close(w.errCh)
 		w.errCh = nil
@@ -122,7 +124,7 @@ func (w *writer) run(client influxdb2.InfluxDBClient) {
 		case <-w.flushCh:
 			w.flushBuffer(baseWriter)
 
-		case <-w.stopCh:
+		case <-w.ctx.Done():
 			ticker.Stop()
 			w.db.CloseNewDataChannel(inputCh)
 			w.doneCh <- true
@@ -140,16 +142,21 @@ func (w *writer) flushBuffer(baseWriter influxdb2.WriteApiBlocking) {
 		}
 
 		// Attempt to upload the data
-		err := baseWriter.WriteRecord(context.Background(), lines...)
+		err := baseWriter.WriteRecord(w.ctx, lines...)
 
 		if err != nil {
+			// Tell anyone listening about the error
 			if w.errCh != nil {
 				w.errCh <- err
 			}
+
 			// Wait for a bit.  This goroutine is only doing uploads, so if
 			// the server connection is broken we should just wait.
-			// Default Influxdb RetryInterval is 30 seconds
-			time.Sleep(time.Second * time.Duration(w.options.RetryInterval()))
+			// Default Influxdb RetryInterval is 30 seconds (or maybe 1 second, see issue I raised!)
+			select {
+			case <-time.After(time.Millisecond * time.Duration(w.options.RetryInterval())):
+			case <-w.ctx.Done():
+			}
 
 		} else {
 			// Mark stuff as done.  This is only called from run(), therefore
