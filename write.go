@@ -32,24 +32,24 @@ type WriteApi interface {
 */
 
 type writer struct {
-	org string
-	bucket string
-	options influxdb2.Options
-	batchSize int
-	db *datastore
-	stopCh chan bool // signals that we should shut down
-	doneCh chan bool // signals that we have shut down
+	org         string
+	bucket      string
+	options     influxdb2.Options
+	batchSize   int
+	db          *datastore
+	stopCh      chan bool // signals that we should shut down
+	doneCh      chan bool // signals that we have shut down
 	writeBuffer []*PtWithMeta
 }
 
 func NewWriter(client influxdb2.InfluxDBClient, db *datastore, org, bucket string, options *influxdb2.Options) *writer {
 	w := writer{
-		org: org, 
-		bucket: bucket, 
-		options: *options,
-		db: db,
-		stopCh: make(chan bool),
-		doneCh: make(chan bool),
+		org:         org,
+		bucket:      bucket,
+		options:     *options,
+		db:          db,
+		stopCh:      make(chan bool),
+		doneCh:      make(chan bool),
 		writeBuffer: make([]*PtWithMeta, 0, options.BatchSize()+1),
 	}
 	go w.run(client)
@@ -80,7 +80,7 @@ func (w *writer) Flush() {
 
 func (w *writer) Close() {
 	w.stopCh <- true
-	<- w.doneCh
+	<-w.doneCh
 }
 
 func (w *writer) Errors() <-chan error {
@@ -88,7 +88,7 @@ func (w *writer) Errors() <-chan error {
 }
 
 // Background process which gets any old data from the database and uploads it, then
-// listens for new data and uploads that.  It batches stuff, using code stolen from
+// listens for new data and uploads that.  It batches points, using code stolen from
 // the non-blocking influx2 client.
 func (w *writer) run(client influxdb2.InfluxDBClient) {
 	baseWriter := client.WriteApiBlocking(w.org, w.bucket)
@@ -113,13 +113,13 @@ func (w *writer) run(client influxdb2.InfluxDBClient) {
 			return
 		}
 	}
-	
+
 }
 
 func (w *writer) flushBuffer(baseWriter influxdb2.WriteApiBlocking) {
 	if len(w.writeBuffer) > 0 {
 		var lines []string
-		for _, pt := range(w.writeBuffer) {
+		for _, pt := range w.writeBuffer {
 			lines = append(lines, pt.Line)
 		}
 
@@ -132,12 +132,10 @@ func (w *writer) flushBuffer(baseWriter influxdb2.WriteApiBlocking) {
 		} else {
 			// Mark stuff as done.  This is only called from run(), therefore
 			// nothing can have been added to writeBuffer since we created `lines`.
-			for _, pt := range(w.writeBuffer) {
+			for _, pt := range w.writeBuffer {
 				w.db.Done <- pt
 			}
 			w.writeBuffer = w.writeBuffer[:0]
 		}
-	}	
+	}
 }
-
-
