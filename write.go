@@ -2,6 +2,7 @@ package influxdb2robust
 
 import (
 	"bytes"
+	"context"
 	"log"
 	"time"
 
@@ -139,7 +140,7 @@ func (w *writer) flushBuffer(baseWriter influxdb2.WriteApiBlocking) {
 		}
 
 		// Attempt to upload the data
-		err := baseWriter.WriteRecord(nil, lines...)
+		err := baseWriter.WriteRecord(context.Background(), lines...)
 
 		if err != nil {
 			if w.errCh != nil {
