@@ -40,6 +40,7 @@ type writer struct {
 	flushCh     chan bool // signals that we should upload the current batch of points immediately
 	stopCh      chan bool // signals that we should shut down
 	doneCh      chan bool // signals that we have shut down
+	errCh       chan error
 	writeBuffer []*ptWithMeta
 }
 
@@ -84,10 +85,18 @@ func (w *writer) Flush() {
 func (w *writer) Close() {
 	w.stopCh <- true
 	<-w.doneCh
+
+	if w.errCh != nil {
+		close(w.errCh)
+		w.errCh = nil
+	}
 }
 
 func (w *writer) Errors() <-chan error {
-	return nil
+	if w.errCh == nil {
+		w.errCh = make(chan error)
+	}
+	return w.errCh
 }
 
 // Background process which gets any old data from the database and uploads it, then
@@ -133,6 +142,9 @@ func (w *writer) flushBuffer(baseWriter influxdb2.WriteApiBlocking) {
 		err := baseWriter.WriteRecord(nil, lines...)
 
 		if err != nil {
+			if w.errCh != nil {
+				w.errCh <- err
+			}
 			// Wait for a bit.  This goroutine is only doing uploads, so if
 			// the server connection is broken we should just wait.
 			// Default Influxdb RetryInterval is 30 seconds
