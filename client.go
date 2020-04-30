@@ -97,7 +97,7 @@ func (c *InfluxDBRobustClient) UsersApi() api.UsersApi {
 // WriteApi returns the asynchronous, non-blocking, Write client.
 // This is the only method which is implemented differently in the "robust" version.
 func (c *InfluxDBRobustClient) WriteApi(org, bucket string) influxdb2.WriteApi {
-	w := NewWriter(c.BaseClient, c.db, org, bucket, c.BaseClient.Options())
+	w := newWriter(c.BaseClient, c.db, org, bucket, c.BaseClient.Options())
 	c.writeApis = append(c.writeApis, w)
 	return w
 }

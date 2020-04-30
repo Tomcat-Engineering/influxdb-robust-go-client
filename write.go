@@ -43,7 +43,7 @@ type writer struct {
 	writeBuffer []*ptWithMeta
 }
 
-func NewWriter(client influxdb2.InfluxDBClient, db *datastore, org, bucket string, options *influxdb2.Options) *writer {
+func newWriter(client influxdb2.InfluxDBClient, db *datastore, org, bucket string, options *influxdb2.Options) *writer {
 	w := writer{
 		org:         org,
 		bucket:      bucket,
