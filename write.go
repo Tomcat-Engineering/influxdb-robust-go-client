@@ -40,7 +40,7 @@ type writer struct {
 	flushCh     chan bool // signals that we should upload the current batch of points immediately
 	stopCh      chan bool // signals that we should shut down
 	doneCh      chan bool // signals that we have shut down
-	writeBuffer []*PtWithMeta
+	writeBuffer []*ptWithMeta
 }
 
 func NewWriter(client influxdb2.InfluxDBClient, db *datastore, org, bucket string, options *influxdb2.Options) *writer {
@@ -52,14 +52,14 @@ func NewWriter(client influxdb2.InfluxDBClient, db *datastore, org, bucket strin
 		flushCh:     make(chan bool),
 		stopCh:      make(chan bool),
 		doneCh:      make(chan bool),
-		writeBuffer: make([]*PtWithMeta, 0, options.BatchSize()+1),
+		writeBuffer: make([]*ptWithMeta, 0, options.BatchSize()+1),
 	}
 	go w.run(client)
 	return &w
 }
 
 func (w *writer) WriteRecord(line string) {
-	w.db.In <- &PtWithMeta{Org: w.org, Bucket: w.bucket, Line: line}
+	w.db.In <- &ptWithMeta{Org: w.org, Bucket: w.bucket, Line: line}
 }
 
 func (w *writer) WritePoint(point *influxdb2.Point) {

@@ -9,7 +9,7 @@ import (
 	bolt "go.etcd.io/bbolt"
 )
 
-type PtWithMeta struct {
+type ptWithMeta struct {
 	Org    string
 	Bucket string
 	Line   string
@@ -19,20 +19,20 @@ type PtWithMeta struct {
 type client struct {
 	Org            string
 	Bucket         string
-	NewDataChan    chan *PtWithMeta
-	FirstLivePoint *PtWithMeta // So that backfill knows when to stop.
+	NewDataChan    chan *ptWithMeta
+	FirstLivePoint *ptWithMeta // So that backfill knows when to stop.
 }
 
 type datastore struct {
 	db      *bolt.DB
-	In      chan *PtWithMeta // incoming new datapoints
-	Done    chan *PtWithMeta // signals that the point has been successfully uploaded
+	In      chan *ptWithMeta // incoming new datapoints
+	Done    chan *ptWithMeta // signals that the point has been successfully uploaded
 	clients []*client
 	stopCh  chan bool
 	doneCh  chan bool // nothing to do with uploads, just signals that our main loop has completed
 }
 
-func NewDatastore(filename string) (*datastore, error) {
+func newDatastore(filename string) (*datastore, error) {
 	db, err := bolt.Open(filename, 0600, &bolt.Options{Timeout: 1 * time.Second})
 	if err != nil {
 		return nil, fmt.Errorf("Failed to open database: %s", err)
@@ -40,8 +40,8 @@ func NewDatastore(filename string) (*datastore, error) {
 
 	d := datastore{
 		db:     db,
-		In:     make(chan *PtWithMeta),
-		Done:   make(chan *PtWithMeta),
+		In:     make(chan *ptWithMeta),
+		Done:   make(chan *ptWithMeta),
 		stopCh: make(chan bool),
 		doneCh: make(chan bool),
 	}
@@ -57,18 +57,18 @@ func (d *datastore) Close() {
 
 // Returns a channel which will squirt out datapoints which need uploading
 // for this org/bucket (including old ones).
-func (d *datastore) GetNewDataChannel(org, bucket string) <-chan *PtWithMeta {
+func (d *datastore) GetNewDataChannel(org, bucket string) <-chan *ptWithMeta {
 	c := &client{
 		Org:         org,
 		Bucket:      bucket,
-		NewDataChan: make(chan *PtWithMeta),
+		NewDataChan: make(chan *ptWithMeta),
 	}
 	go d.backfill(c)
 	d.clients = append(d.clients, c)
 	return c.NewDataChan
 }
 
-func (d *datastore) CloseNewDataChannel(ch <-chan *PtWithMeta) {
+func (d *datastore) CloseNewDataChannel(ch <-chan *ptWithMeta) {
 	// Close the `client` associated with this channel, and remove it from our list
 	tmp := d.clients[:0]
 	for _, c := range d.clients {
@@ -84,7 +84,7 @@ func (d *datastore) CloseNewDataChannel(ch <-chan *PtWithMeta) {
 // Run forever, moving data between the channels and the Bolt database.
 // Only stuff called from this function will update the database.
 func (d *datastore) run() {
-	var pt *PtWithMeta
+	var pt *ptWithMeta
 	for {
 		select {
 		case <-d.stopCh:
@@ -108,7 +108,7 @@ func (d *datastore) run() {
 	}
 }
 
-func (d *datastore) store(pt *PtWithMeta) {
+func (d *datastore) store(pt *ptWithMeta) {
 	var id uint64
 	err := d.db.Update(func(tx *bolt.Tx) error {
 		b, err := tx.CreateBucketIfNotExists(topic(pt.Org, pt.Bucket))
@@ -126,7 +126,7 @@ func (d *datastore) store(pt *PtWithMeta) {
 	}
 }
 
-func (d *datastore) markDone(pt *PtWithMeta) {
+func (d *datastore) markDone(pt *ptWithMeta) {
 	err := d.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(topic(pt.Org, pt.Bucket))
 		if b == nil {
@@ -156,7 +156,7 @@ func (d *datastore) backfill(c *client) {
 				// We have caught up with the live data
 				break
 			}
-			c.NewDataChan <- &PtWithMeta{
+			c.NewDataChan <- &ptWithMeta{
 				Org:    c.Org,
 				Bucket: c.Bucket,
 				Line:   string(line),
