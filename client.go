@@ -113,3 +113,9 @@ func (c *InfluxDBRobustClient) WriteApi(org, bucket string) influxdb2.WriteApi {
 func (c *InfluxDBRobustClient) WriteApiBlocking(org, bucket string) influxdb2.WriteApiBlocking {
 	return c.BaseClient.WriteApiBlocking(org, bucket)
 }
+
+// Backlog allows you to find out how many points are waiting to be uploaded for a given
+// org/bucket.
+func (c *InfluxDBRobustClient) Backlog(org, bucket string) uint64 {
+	return c.db.Backlog(org, bucket)
+}

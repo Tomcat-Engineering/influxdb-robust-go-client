@@ -170,6 +170,27 @@ func (d *datastore) backfill(c *client) {
 	}
 }
 
+// Backlog counts how many messages are queued up for a given org/bucket combination.
+// May only be approximate as we just look at the keys rather than actually counting things.
+func (d *datastore) Backlog(org, bucket string) uint64 {
+	var n uint64
+	d.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(topic(org, bucket))
+		if b == nil {
+			// The bucket doesn't exist, therefore there is zero backlog
+			n = 0
+			return nil
+		}
+
+		cursor := b.Cursor()
+		start, _ := cursor.First()
+		end, _ := cursor.Last()
+		n = btoi(end) - btoi(start)
+		return nil
+	})
+	return n
+}
+
 // Topic name (used inside bolt only)
 func topic(org, bucket string) []byte {
 	// Sorry, a bit hacky

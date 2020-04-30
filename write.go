@@ -102,6 +102,12 @@ func (w *writer) Errors() <-chan error {
 	return w.errCh
 }
 
+// Backlog tells you how many messages are queued for this client.
+// This is not part of the influxdb2.WriteApi interface, so external code can't actually use it yet.
+func (w *writer) Backlog() uint64 {
+	return w.db.Backlog(w.org, w.bucket)
+}
+
 // Background process which gets any old data from the database and uploads it, then
 // listens for new data and uploads that.  It batches points, using code stolen from
 // the non-blocking influx2 client.
@@ -152,7 +158,7 @@ func (w *writer) flushBuffer(baseWriter influxdb2.WriteApiBlocking) {
 
 			// Wait for a bit.  This goroutine is only doing uploads, so if
 			// the server connection is broken we should just wait.
-			// Default Influxdb RetryInterval is 30 seconds (or maybe 1 second, see issue I raised!)
+			// Default Influxdb RetryInterval is 1 second!
 			select {
 			case <-time.After(time.Millisecond * time.Duration(w.options.RetryInterval())):
 			case <-w.ctx.Done():
