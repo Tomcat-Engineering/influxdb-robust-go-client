@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"log"
-	"strings"
 	"time"
 
 	"github.com/influxdata/influxdb-client-go"
@@ -12,8 +11,12 @@ import (
 )
 
 // Create something that implements the influxdb2.WriteApi interface but uses the
-// boltdb-backed queue rather than just an in-memory one.  This code is mostly
-// copied from the original.
+// boltdb-backed queue rather than just an in-memory one.
+
+// The "writer" basically just deals with batching up incoming points and then
+// passes the data to the writeService to actually upload it.
+
+// This code is mostly copied from the original influxdb2 client.
 
 type writer struct {
 	service     *writeService
@@ -107,7 +110,7 @@ x:
 
 func (w *writer) flushBuffer() {
 	if len(w.writeBuffer) > 0 {
-		w.service.NewDataCh <- strings.Join(w.writeBuffer, "")
+		w.service.NewDataCh <- &batch{lines: w.writeBuffer}
 		w.writeBuffer = w.writeBuffer[:0]
 	}
 }
