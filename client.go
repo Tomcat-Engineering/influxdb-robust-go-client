@@ -20,7 +20,6 @@ import (
 // use the buffer.
 type InfluxDBRobustClient struct {
 	BaseClient influxdb2.InfluxDBClient
-	db         *datastore
 	writeApis  []influxdb2.WriteApi
 }
 
@@ -28,22 +27,17 @@ type InfluxDBRobustClient struct {
 // and configured with custom Options
 // Authentication token can be empty in case of connecting to newly installed InfluxDB server, which has not been set up yet.
 // In such case Setup will set authentication token
-func NewClientWithOptions(serverUrl string, authToken string, bufferFile string, options *influxdb2.Options) (*InfluxDBRobustClient, error) {
-	db, err := newDatastore(bufferFile)
-	if err != nil {
-		return nil, err
-	}
+func NewClientWithOptions(serverUrl string, authToken string, options *influxdb2.Options) *InfluxDBRobustClient {
 	return &InfluxDBRobustClient{
 		BaseClient: influxdb2.NewClientWithOptions(serverUrl, authToken, options),
-		db:         db,
-	}, nil
+	}
 }
 
 // NewClient creates Client for connecting to given serverUrl with provided authentication token, with the default options.
 // Authentication token can be empty in case of connecting to newly installed InfluxDB server, which has not been set up yet.
 // In such case Setup will set authentication token
-func NewClient(serverUrl string, authToken string, bufferFile string) (*InfluxDBRobustClient, error) {
-	return NewClientWithOptions(serverUrl, authToken, bufferFile, influxdb2.DefaultOptions())
+func NewClient(serverUrl string, authToken string) *InfluxDBRobustClient {
+	return NewClientWithOptions(serverUrl, authToken, influxdb2.DefaultOptions())
 }
 
 // Delegate most things to the normal client that we are wrapping
@@ -64,7 +58,6 @@ func (c *InfluxDBRobustClient) Close() {
 		w.Close()
 	}
 	c.BaseClient.Close()
-	c.db.Close()
 }
 
 // Setup sends request to initialise new InfluxDB server with user, org and bucket, and data retention period
@@ -101,10 +94,13 @@ func (c *InfluxDBRobustClient) UsersApi() api.UsersApi {
 
 // WriteApi returns the asynchronous, non-blocking, Write client.
 // This is the only method which is implemented differently in the "robust" version.
-func (c *InfluxDBRobustClient) WriteApi(org, bucket string) influxdb2.WriteApi {
-	w := newWriter(c.BaseClient, c.db, org, bucket, c.BaseClient.Options())
-	c.writeApis = append(c.writeApis, w)
-	return w
+// Note the extra `filename` argument, and that it can return an error.
+func (c *InfluxDBRobustClient) WriteApi(org, bucket, filename string) (influxdb2.WriteApi, error) {
+	w, err := newWriter(org, bucket, filename, c.BaseClient)
+	if err == nil {
+		c.writeApis = append(c.writeApis, w)
+	}
+	return w, err
 }
 
 // WriteApiBlocking returns the synchronous, blocking, Write client.
@@ -112,10 +108,4 @@ func (c *InfluxDBRobustClient) WriteApi(org, bucket string) influxdb2.WriteApi {
 // that the write failed, so we don't need the magic persistent buffer.
 func (c *InfluxDBRobustClient) WriteApiBlocking(org, bucket string) influxdb2.WriteApiBlocking {
 	return c.BaseClient.WriteApiBlocking(org, bucket)
-}
-
-// Backlog allows you to find out how many points are waiting to be uploaded for a given
-// org/bucket.
-func (c *InfluxDBRobustClient) Backlog(org, bucket string) uint64 {
-	return c.db.Backlog(org, bucket)
 }
