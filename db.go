@@ -185,7 +185,9 @@ func (d *datastore) Backlog(org, bucket string) uint64 {
 		cursor := b.Cursor()
 		start, _ := cursor.First()
 		end, _ := cursor.Last()
-		n = btoi(end) - btoi(start)
+		if start != nil && end != nil {
+			n = btoi(end) - btoi(start)
+		}
 		return nil
 	})
 	return n
