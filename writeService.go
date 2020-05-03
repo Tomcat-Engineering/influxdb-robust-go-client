@@ -2,7 +2,10 @@ package influxdb2robust
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"log"
+	"strings"
 	"time"
 
 	"github.com/influxdata/influxdb-client-go"
@@ -11,6 +14,19 @@ import (
 type batch struct {
 	lines []string
 	id    *uint64
+}
+
+func (b *batch) serialise() ([]byte, error) {
+	return json.Marshal(b.lines)
+}
+
+func unserialiseBatch(data []byte) (*batch, error) {
+	b := new(batch)
+	err := json.Unmarshal(data, &b.lines)
+	if err != nil {
+		return nil, err
+	}
+	return b, nil
 }
 
 type writeService struct {
@@ -40,17 +56,29 @@ func newWriteService(ctx context.Context, org, bucket, filename string, client i
 
 // Run forver, uploading any points from the backlog first, then
 func (w *writeService) uploadProc() {
-	defer w.q.close()
 	var b *batch
+
+	// When we shutdown, store all the pending data into the database and then close it
+	defer func(w *writeService) {
+		for {
+			bb := <-w.NewDataCh
+			if bb != nil {
+				w.q.store(bb)
+			} else {
+				// The writer has closed the channel, we can quit
+				break
+			}
+		}
+		w.q.close()
+	}(w)
+
 	for {
-		// Check that we aren't supposed to be shutting down
-		select {
-		case <-w.ctx.Done():
+		// Check whether we are supposed to be shutting down
+		if w.ctx.Err() != nil {
 			return
-		default:
 		}
 
-		// See whether there is data in the backlog to upload
+		// If we don't already have a batch, see whether there is data in the backlog to upload
 		if b == nil {
 			b = w.q.first()
 		}
@@ -64,9 +92,23 @@ func (w *writeService) uploadProc() {
 			}
 		}
 
+		if b == nil {
+			continue
+		}
+
 		// If we get here then we have data to upload, try to upload it
 		err := w.writeApi.WriteRecord(w.ctx, b.lines...)
 		if err != nil {
+			if strings.HasPrefix(err.Error(), "4") {
+				// This is hacky, but unfortunately the Error type is now buried in an internal package within
+				// influxdb2 so we don't have the status code, just the error string.  If the server rejects the request it will
+				// return a 4xx error code, and if we retry this request it will just reject it again and we will be stuck
+				// retrying it forever.  So we just log and drop the entire batch.
+				log.Printf("Server rejected write, will not retry this batch: %s", err)
+				b = nil
+				continue
+			}
+
 			if b.id == nil {
 				// This data is not already in the retry buffer
 				w.q.store(b)
@@ -80,14 +122,17 @@ func (w *writeService) uploadProc() {
 					return
 				case <-t:
 					break
-				case b = <-w.NewDataCh:
-					w.q.store(b)
+				case bb := <-w.NewDataCh:
+					if bb != nil {
+						w.q.store(bb)
+					}
 				}
 			}
 		} else {
 			if b.id != nil {
 				w.q.markDone(*b.id)
 			}
+			b = nil
 		}
 	}
 }

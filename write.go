@@ -26,7 +26,7 @@ type writer struct {
 	options     *influxdb2.Options
 	bufferCh    chan string
 	errCh       chan error
-	doneCh      chan int
+	doneCh      chan struct{}
 	flushCh     chan int
 }
 
@@ -102,10 +102,11 @@ x:
 		case <-w.ctx.Done():
 			ticker.Stop()
 			w.flushBuffer()
+			close(w.service.NewDataCh)
 			break x
 		}
 	}
-	w.doneCh <- 1
+	close(w.doneCh)
 }
 
 func (w *writer) flushBuffer() {
