@@ -32,7 +32,11 @@ type writer struct {
 
 func newWriter(org, bucket, filename string, client influxdb2.InfluxDBClient) (*writer, error) {
 	w := writer{
-		options: client.Options(),
+		options:  client.Options(),
+		bufferCh: make(chan string),
+		errCh:    make(chan error),
+		doneCh:   make(chan struct{}),
+		flushCh:  make(chan int),
 	}
 	w.ctx, w.cancelFunc = context.WithCancel(context.Background())
 	var err error
@@ -72,6 +76,9 @@ func (w *writer) Flush() {
 
 func (w *writer) Close() {
 	w.cancelFunc()
+	if w.errCh == nil {
+		close(w.errCh)
+	}
 	<-w.doneCh
 }
 

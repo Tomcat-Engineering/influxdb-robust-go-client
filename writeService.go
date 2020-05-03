@@ -90,6 +90,8 @@ func (w *writeService) uploadProc() {
 				log.Printf("Server rejected write, will not retry this batch: %s", err)
 				b = nil
 				continue
+			} else {
+				log.Printf("Error writing to influx: %s", err)
 			}
 
 			if b.id == nil {
