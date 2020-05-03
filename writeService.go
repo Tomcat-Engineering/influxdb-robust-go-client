@@ -2,7 +2,6 @@ package influxdb2robust
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -10,24 +9,6 @@ import (
 
 	"github.com/influxdata/influxdb-client-go"
 )
-
-type batch struct {
-	lines []string
-	id    *uint64
-}
-
-func (b *batch) serialise() ([]byte, error) {
-	return json.Marshal(b.lines)
-}
-
-func unserialiseBatch(data []byte) (*batch, error) {
-	b := new(batch)
-	err := json.Unmarshal(data, &b.lines)
-	if err != nil {
-		return nil, err
-	}
-	return b, nil
-}
 
 type writeService struct {
 	NewDataCh chan *batch
