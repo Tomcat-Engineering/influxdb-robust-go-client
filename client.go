@@ -28,6 +28,9 @@ type InfluxDBRobustClient struct {
 // Authentication token can be empty in case of connecting to newly installed InfluxDB server, which has not been set up yet.
 // In such case Setup will set authentication token
 func NewClientWithOptions(serverUrl string, authToken string, options *influxdb2.Options) *InfluxDBRobustClient {
+	// Disable retries for the underlying client, otherwise it will use its own in-memory buffer
+	// to store failed uploads - we want to store them in our on-disk buffer instead.
+	options.SetMaxRetries(0)
 	return &InfluxDBRobustClient{
 		BaseClient: influxdb2.NewClientWithOptions(serverUrl, authToken, options),
 	}
