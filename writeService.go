@@ -35,7 +35,9 @@ func newWriteService(ctx context.Context, org, bucket, filename string, client i
 	return &w, nil
 }
 
-// Run forver, uploading any points from the backlog first, then
+// Run forver, uploading any points from the backlog first, then any new points.
+// If there is an error uploading, we change to a state where we shovel new points straight
+// into the retry queue for a bit, before resuming uploads.
 func (w *writeService) uploadProc() {
 	var b *batch
 
@@ -91,11 +93,11 @@ func (w *writeService) uploadProc() {
 			}
 
 			if b.id == nil {
-				// This data is not already in the retry buffer
+				// This data is not already in the retry queue.  Storing it will set an ID.
 				w.q.store(b)
 			}
 
-			// Wait for the retry interval, but meanwhile store any new datapoints straight into the database
+			// Wait for the retry interval, but meanwhile store any new datapoints straight into the retry queue
 			t := time.After(time.Millisecond * time.Duration(w.options.RetryInterval()))
 			for {
 				select {
@@ -106,6 +108,8 @@ func (w *writeService) uploadProc() {
 				case bb := <-w.NewDataCh:
 					if bb != nil {
 						w.q.store(bb)
+					} else {
+						return
 					}
 				}
 			}

@@ -9,6 +9,8 @@ import (
 	bolt "go.etcd.io/bbolt"
 )
 
+// retryQueue is a BoltDB database which stores `batch`es of influxdb lines.
+// Except for initialisation, errors are logged rather than returned.
 type retryQueue struct {
 	db *bolt.DB
 }
