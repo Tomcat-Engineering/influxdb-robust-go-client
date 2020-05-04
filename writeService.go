@@ -87,11 +87,14 @@ func (w *writeService) uploadProc() {
 				// influxdb2 so we don't have the status code, just the error string.  If the server rejects the request it will
 				// return a 4xx error code, and if we retry this request it will just reject it again and we will be stuck
 				// retrying it forever.  So we just log and drop the entire batch.
+
+				// TODO: not sure this actually works?
 				log.Printf("Server rejected write, will not retry this batch: %s", err)
 				b = nil
 				continue
 			} else {
 				log.Printf("Error writing to influx: %s", err)
+				// NB - we do not set b to nil here, so we will try the same batch again next time round the loop.
 			}
 
 			if b.id == nil {
@@ -100,26 +103,33 @@ func (w *writeService) uploadProc() {
 			}
 
 			// Wait for the retry interval, but meanwhile store any new datapoints straight into the retry queue
-			t := time.After(time.Millisecond * time.Duration(w.options.RetryInterval()))
-			for {
-				select {
-				case <-w.ctx.Done():
-					return
-				case <-t:
-					break
-				case bb := <-w.NewDataCh:
-					if bb != nil {
-						w.q.store(bb)
-					} else {
-						return
-					}
-				}
-			}
+			w.waitForRetry(time.Millisecond * time.Duration(w.options.RetryInterval()))
+
 		} else {
+			// Upload was successful
 			if b.id != nil {
 				w.q.markDone(*b.id)
 			}
 			b = nil
+		}
+	}
+}
+
+// Wait for the retry interval, but meanwhile store any new datapoints straight into the retry queue
+func (w *writeService) waitForRetry(t time.Duration) {
+	done := time.After(t)
+	for {
+		select {
+		case <-w.ctx.Done():
+			return
+		case <-done:
+			break
+		case bb := <-w.NewDataCh:
+			if bb != nil {
+				w.q.store(bb)
+			} else {
+				return
+			}
 		}
 	}
 }
