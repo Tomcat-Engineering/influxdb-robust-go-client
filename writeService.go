@@ -124,7 +124,7 @@ func (w *writeService) waitForRetry(t time.Duration) {
 		case <-w.ctx.Done():
 			return
 		case <-done:
-			break
+			return
 		case bb := <-w.NewDataCh:
 			if bb != nil {
 				w.q.store(bb)
