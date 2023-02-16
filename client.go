@@ -48,7 +48,7 @@ func (c *InfluxDBRobustClient) Close() {
 	c.Client.Close()
 }
 
-// WriteApi returns the asynchronous, non-blocking, Write client.
+// WriteAPI returns the asynchronous, non-blocking, Write client.
 // This is the only method which is implemented differently in the "robust" version.
 // Note the extra `filename` argument, and that it can return an error.
 func (c *InfluxDBRobustClient) WriteAPI(org, bucket, filename string) (api.WriteAPI, error) {

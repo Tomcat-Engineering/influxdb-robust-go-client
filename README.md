@@ -6,7 +6,7 @@
 
 The [official InfluxDB 2 golang client](https://github.com/influxdata/influxdb-client-go) works great when your code can reliably communicate with the InfluxDB instance.  However, if you are trying to write datapoints into a remote InfluxDB instance over an unreliable connection then it is not so good - if the network is down, by default it will try to write each batch of points three times at one second intervals, and then give up and throw your data away.
 
-This "robust" version is a thin wrapper around the official InfluxDB 2 golang client which just modifies the `WriteApi()` method to return a special WriteApi.  When it can't reach InfluxDB it stores data into a local BoltDB database instead, and tries again later.  Once the data has been safely uploaded into InfluxDB it is deleted from the local database.  
+This "robust" version is a thin wrapper around the official InfluxDB 2 golang client which just modifies the `WriteAPI()` method to return a special WriteAPI.  When it can't reach InfluxDB it stores data into a local BoltDB database instead, and tries again later.  Once the data has been safely uploaded into InfluxDB it is deleted from the local database.  
 
 This means that we can tolerate network outages of several days (not uncommon in the industrial environments that this was designed for) - in fact you can buffer as much data as will fit on your hard drive.  When the network starts working again, the system will automatically back-fill all the data (maintaining write order so that InfluxDB can ingest it efficiently).  
 
@@ -37,7 +37,7 @@ func main() {
     // Note that compared to the standard influxdb2 version,
     // this needs an extra filename arg for the buffer database,
     // and returns an extra error field
-    writeApi, err := client.WriteApi("my-org", "my-bucket", "my-bufferfile.db")
+    writeApi, err := client.WriteAPI("my-org", "my-bucket", "my-bufferfile.db")
     if err != nil {
         fmt.Printf("Error initialising write API: %s", err)
         return
