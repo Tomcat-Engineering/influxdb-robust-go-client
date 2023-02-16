@@ -11,7 +11,7 @@ import (
 	lp "github.com/influxdata/line-protocol"
 )
 
-// Create something that implements the influxdb2.WriteApi interface but uses the
+// Create something that implements the influxdb2.api.WriteAPI interface but uses the
 // boltdb-backed queue rather than just an in-memory one.
 
 // The "writer" basically just deals with batching up incoming points and then
@@ -49,13 +49,13 @@ func newWriter(org, bucket, filename string, client influxdb2.Client) (*writer, 
 	return &w, nil
 }
 
-func (w *writer) WriteRecord(ctx context.Context, line string) {
+func (w *writer) WriteRecord(line string) {
 	b := []byte(line)
 	b = append(b, 0xa)
 	w.bufferCh <- string(b)
 }
 
-func (w *writer) WritePoint(ctx context.Context, point *writeapi.Point) {
+func (w *writer) WritePoint(point *writeapi.Point) {
 	// Convert to line-protocol record
 	var buffer bytes.Buffer
 	e := lp.NewEncoder(&buffer)
@@ -67,7 +67,7 @@ func (w *writer) WritePoint(ctx context.Context, point *writeapi.Point) {
 		log.Printf("point encoding error: %s\n", err.Error())
 		return
 	}
-	w.WriteRecord(ctx, buffer.String())
+	w.WriteRecord(buffer.String())
 }
 
 func (w *writer) Flush() {

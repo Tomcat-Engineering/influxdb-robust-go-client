@@ -5,22 +5,19 @@
 package influxdb2robust
 
 import (
-	"context"
-
-	"github.com/influxdata/influxdb-client-go"
+	influxdb2 "github.com/influxdata/influxdb-client-go"
 	"github.com/influxdata/influxdb-client-go/api"
-	"github.com/influxdata/influxdb-client-go/domain"
 )
 
 // InfluxDBRobustClient implements the API to communicate with an InfluxDBServer
-// There two APIs for writing, WriteApi and WriteApiBlocking.
-// WriteApi provides asynchronous, non-blocking, methods for writing time series data,
+// There two APIs for writing, WriteAPI and WriteAPIBlocking.
+// WriteAPI provides asynchronous, non-blocking, methods for writing time series data,
 // and uses the robust Boltdb buffer.
-// WriteApiBlocking provides blocking methods for writing time series data and does not
+// WriteAPIBlocking provides blocking methods for writing time series data and does not
 // use the buffer.
 type InfluxDBRobustClient struct {
-	BaseClient influxdb2.InfluxDBClient
-	writeApis  []influxdb2.WriteApi
+	influxdb2.Client
+	writeApis []api.WriteAPI
 }
 
 // NewClientWithOptions creates Client for connecting to given serverUrl with provided authentication token
@@ -32,7 +29,7 @@ func NewClientWithOptions(serverUrl string, authToken string, options *influxdb2
 	// to store failed uploads - we want to store them in our on-disk buffer instead.
 	options.SetMaxRetries(0)
 	return &InfluxDBRobustClient{
-		BaseClient: influxdb2.NewClientWithOptions(serverUrl, authToken, options),
+		Client: influxdb2.NewClientWithOptions(serverUrl, authToken, options),
 	}
 }
 
@@ -43,72 +40,51 @@ func NewClient(serverUrl string, authToken string) *InfluxDBRobustClient {
 	return NewClientWithOptions(serverUrl, authToken, influxdb2.DefaultOptions())
 }
 
-// Delegate most things to the normal client that we are wrapping
-
-// Options returns the options associated with client
-func (c *InfluxDBRobustClient) Options() *influxdb2.Options {
-	return c.BaseClient.Options()
-}
-
-// ServerUrl returns the url of the server url client talks to
-func (c *InfluxDBRobustClient) ServerUrl() string {
-	return c.BaseClient.ServerUrl()
-}
-
 // Close ensures all ongoing asynchronous write clients finish
 func (c *InfluxDBRobustClient) Close() {
 	for _, w := range c.writeApis {
 		w.Close()
 	}
-	c.BaseClient.Close()
-}
-
-// Setup sends request to initialise new InfluxDB server with user, org and bucket, and data retention period
-// Retention period of zero will result to infinite retention
-// and returns details about newly created entities along with the authorization object
-func (c *InfluxDBRobustClient) Setup(ctx context.Context, username, password, org, bucket string, retentionPeriodHours int) (*domain.OnboardingResponse, error) {
-	return c.BaseClient.Setup(ctx, username, password, org, bucket, retentionPeriodHours)
-}
-
-// Ready checks InfluxDB server is running
-func (c *InfluxDBRobustClient) Ready(ctx context.Context) (bool, error) {
-	return c.BaseClient.Ready(ctx)
-}
-
-// QueryApi returns Query client
-func (c *InfluxDBRobustClient) QueryApi(org string) influxdb2.QueryApi {
-	return c.BaseClient.QueryApi(org)
-}
-
-// AuthorizationsApi returns Authorizations API client
-func (c *InfluxDBRobustClient) AuthorizationsApi() api.AuthorizationsApi {
-	return c.BaseClient.AuthorizationsApi()
-}
-
-// OrganizationsApi returns Organizations API client
-func (c *InfluxDBRobustClient) OrganizationsApi() api.OrganizationsApi {
-	return c.BaseClient.OrganizationsApi()
-}
-
-// UsersApi returns Users API client
-func (c *InfluxDBRobustClient) UsersApi() api.UsersApi {
-	return c.BaseClient.UsersApi()
+	c.Client.Close()
 }
 
 // WriteApi returns the asynchronous, non-blocking, Write client.
 // This is the only method which is implemented differently in the "robust" version.
 // Note the extra `filename` argument, and that it can return an error.
-func (c *InfluxDBRobustClient) WriteApi(org, bucket, filename string) (influxdb2.WriteApi, error) {
-	w, err := newWriter(org, bucket, filename, c.BaseClient)
+func (c *InfluxDBRobustClient) WriteAPI(org, bucket, filename string) (api.WriteAPI, error) {
+	w, err := newWriter(org, bucket, filename, c.Client)
 	if err == nil {
 		c.writeApis = append(c.writeApis, w)
 	}
 	return w, err
 }
 
+// WriteApi returns the asynchronous, non-blocking, Write client.
+// This is the only method which is implemented differently in the "robust" version.
+// Note the extra `filename` argument, and that it can return an error.
+// Deprecated version, use WriteAPI instead.
+func (c *InfluxDBRobustClient) WriteApi(org, bucket, filename string) (api.WriteApi, error) {
+	w, err := newWriter(org, bucket, filename, c.Client)
+	if err == nil {
+		c.writeApis = append(c.writeApis, w)
+	}
+	return w, err
+}
+
+// The methods below are just proxied so that we can add a doc comment noting that
+// they are not buffered.
+
+// WriteAPIBlocking returns the synchronous, blocking, Write client.
+// We allow direct access to the underlying blocking client - blocking writes will tell the caller
+// that the write failed, so we don't need the magic persistent buffer.
+func (c *InfluxDBRobustClient) WriteAPIBlocking(org, bucket string) api.WriteAPIBlocking {
+	return c.Client.WriteAPIBlocking(org, bucket)
+}
+
 // WriteApiBlocking returns the synchronous, blocking, Write client.
 // We allow direct access to the underlying blocking client - blocking writes will tell the caller
 // that the write failed, so we don't need the magic persistent buffer.
-func (c *InfluxDBRobustClient) WriteApiBlocking(org, bucket string) influxdb2.WriteApiBlocking {
-	return c.BaseClient.WriteApiBlocking(org, bucket)
+// This is deprecated, use WriteAPIBlocking instead.
+func (c *InfluxDBRobustClient) WriteApiBlocking(org, bucket string) api.WriteApiBlocking {
+	return c.Client.WriteApiBlocking(org, bucket)
 }
