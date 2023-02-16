@@ -22,7 +22,7 @@ type writeService struct {
 func newWriteService(ctx context.Context, org, bucket, filename string, client influxdb2.Client) (*writeService, error) {
 	q, err := newRetryQueue(filename)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to open file '%s' for buffer: %s", filename, err)
+		return nil, fmt.Errorf("failed to open file '%s' for buffer: %s", filename, err)
 	}
 
 	w := writeService{
