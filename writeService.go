@@ -7,18 +7,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/influxdata/influxdb-client-go"
+	influxdb2 "github.com/influxdata/influxdb-client-go"
+	"github.com/influxdata/influxdb-client-go/api"
 )
 
 type writeService struct {
 	NewDataCh chan *batch
 	ctx       context.Context
 	options   *influxdb2.Options
-	writeApi  influxdb2.WriteApiBlocking
+	writeApi  api.WriteApiBlocking
 	q         *retryQueue
 }
 
-func newWriteService(ctx context.Context, org, bucket, filename string, client influxdb2.InfluxDBClient) (*writeService, error) {
+func newWriteService(ctx context.Context, org, bucket, filename string, client influxdb2.Client) (*writeService, error) {
 	q, err := newRetryQueue(filename)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to open file '%s' for buffer: %s", filename, err)

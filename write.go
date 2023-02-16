@@ -6,7 +6,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/influxdata/influxdb-client-go"
+	influxdb2 "github.com/influxdata/influxdb-client-go"
+	writeapi "github.com/influxdata/influxdb-client-go/api/write"
 	lp "github.com/influxdata/line-protocol"
 )
 
@@ -30,7 +31,7 @@ type writer struct {
 	flushCh     chan int
 }
 
-func newWriter(org, bucket, filename string, client influxdb2.InfluxDBClient) (*writer, error) {
+func newWriter(org, bucket, filename string, client influxdb2.Client) (*writer, error) {
 	w := writer{
 		options:  client.Options(),
 		bufferCh: make(chan string),
@@ -48,13 +49,13 @@ func newWriter(org, bucket, filename string, client influxdb2.InfluxDBClient) (*
 	return &w, nil
 }
 
-func (w *writer) WriteRecord(line string) {
+func (w *writer) WriteRecord(ctx context.Context, line string) {
 	b := []byte(line)
 	b = append(b, 0xa)
 	w.bufferCh <- string(b)
 }
 
-func (w *writer) WritePoint(point *influxdb2.Point) {
+func (w *writer) WritePoint(ctx context.Context, point *writeapi.Point) {
 	// Convert to line-protocol record
 	var buffer bytes.Buffer
 	e := lp.NewEncoder(&buffer)
@@ -66,7 +67,7 @@ func (w *writer) WritePoint(point *influxdb2.Point) {
 		log.Printf("point encoding error: %s\n", err.Error())
 		return
 	}
-	w.WriteRecord(buffer.String())
+	w.WriteRecord(ctx, buffer.String())
 }
 
 func (w *writer) Flush() {
