@@ -18,7 +18,7 @@ type retryQueue struct {
 func newRetryQueue(filename string) (*retryQueue, error) {
 	db, err := bolt.Open(filename, 0600, &bolt.Options{Timeout: 1 * time.Second})
 	if err != nil {
-		return nil, fmt.Errorf("Failed to open database: %s", err)
+		return nil, fmt.Errorf("failed to open database: %s", err)
 	}
 
 	err = db.Update(func(tx *bolt.Tx) error {
@@ -26,7 +26,7 @@ func newRetryQueue(filename string) (*retryQueue, error) {
 		return err
 	})
 	if err != nil {
-		return nil, fmt.Errorf("Failed to create bucket: %s", err)
+		return nil, fmt.Errorf("failed to create bucket: %s", err)
 	}
 
 	return &retryQueue{
